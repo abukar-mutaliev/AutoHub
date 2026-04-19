@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  MASTER
+  OWNER
+}
+
+enum OrderStatus {
+  PENDING
+  ASSIGNED
+  EN_ROUTE
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum PriceType {
+  FIXED
+  ESTIMATED
+  ON_SITE
+}
+
+enum PaymentStatus {
+  PENDING
+  CALLOUT_PAID
+  AWAITING_FINAL
+  FINAL_SENT
+  COMPLETED
+  REFUNDED
+}
+
+model User {
+  id            String       @id @default(cuid())
+  name          String
+  phone         String       @unique
+  email         String?      @unique
+  password      String
+  role          Role         @default(CLIENT)
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  ordersAsClient Order[]     @relation("ClientOrders")
+  assignments   Assignment[]
+}
+
+model Service {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  priceType   PriceType @default(FIXED)
+  price       Decimal?
+  priceMin    Decimal?
+  priceMax    Decimal?
+  calloutFee  Decimal?
+  isMobile    Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  orders      Order[]
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  clientId      String
+  serviceId     String
+  status        OrderStatus @default(PENDING)
+  priceType     PriceType
+  estimatedMin  Decimal?
+  estimatedMax  Decimal?
+  finalPrice    Decimal?
+  priceApproved Boolean     @default(false)
+  calloutFee    Decimal?
+  address       String?
+  geoLat        Float?
+  geoLng        Float?
+  carBrand      String
+  carModel      String
+  carYear       Int
+  comment       String?
+  scheduledAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  client        User        @relation("ClientOrders", fields: [clientId], references: [id])
+  service       Service     @relation(fields: [serviceId], references: [id])
+  assignment    Assignment?
+  payment       Payment?
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Assignment {
+  id        String    @id @default(cuid())
+  orderId   String    @unique
+  masterId  String
+  gpsLat    Float?
+  gpsLng    Float?
+  startedAt DateTime?
+  arrivedAt DateTime?
+  doneAt    DateTime?
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  order     Order     @relation(fields: [orderId], references: [id])
+  master    User      @relation(fields: [masterId], references: [id])
+
+  @@index([masterId])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  orderId       String        @unique
+  calloutAmount Decimal?
+  finalAmount   Decimal?
+  calloutPaidAt DateTime?
+  finalPaidAt   DateTime?
+  status        PaymentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  order         Order         @relation(fields: [orderId], references: [id])
+}

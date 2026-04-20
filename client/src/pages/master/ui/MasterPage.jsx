@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getOrders, setFinalPrice, updateOrderStatus } from "../../../features/orders";
 import { orderStatusLabel } from "../../../shared/lib/orderStatus";
+import { OrderDetailSections } from "../../../shared/ui/OrderDetailSections";
 
 const nextStatusByCurrent = {
   PENDING: "ASSIGNED",
@@ -63,6 +64,13 @@ export function MasterPage() {
                 <strong style={styles.service}>{order.service?.name ?? "Без услуги"}</strong>
                 <span style={styles.status}>{orderStatusLabel(order.status)}</span>
               </div>
+
+              {order.service?.description ? (
+                <p style={styles.serviceDescription}>{order.service.description}</p>
+              ) : null}
+
+              <OrderDetailSections order={order} showMasterSection={false} />
+
               <div style={styles.actions}>
                 {nextStatusByCurrent[order.status] ? (
                   <button type="button" style={styles.primaryButton} onClick={() => onMoveNext(order.id, order.status)}>
@@ -132,8 +140,15 @@ const styles = {
     alignItems: "center",
     gap: "8px",
     marginBottom: "10px",
+    flexWrap: "wrap",
   },
-  service: { color: "#e2e8f0" },
+  service: { color: "#e2e8f0", fontSize: "18px" },
+  serviceDescription: {
+    margin: "0 0 12px",
+    fontSize: "14px",
+    lineHeight: 1.5,
+    color: "#94a3b8",
+  },
   status: {
     padding: "4px 10px",
     borderRadius: "999px",

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { createOrder } from "../../../features/orders";
 import { getServices } from "../../../features/services";
+import { getAccessToken } from "../../../shared/api/axiosClient";
+import { routes } from "../../../shared/config/routes";
 
 function emptyOrderForm() {
   return {
@@ -67,10 +70,26 @@ function formatPriceBlock(service) {
   return lines;
 }
 
+function isSessionAuthError(error) {
+  if (error.response?.status !== 401) return false;
+  const reason = error.response?.data?.error?.details?.reason;
+  if (
+    reason === "NO_REFRESH_TOKEN" ||
+    reason === "NO_ACCESS_TOKEN" ||
+    reason === "INVALID_ACCESS_TOKEN" ||
+    reason === "INVALID_REFRESH_TOKEN"
+  ) {
+    return true;
+  }
+  const msg = error.response?.data?.error?.message ?? "";
+  return /войдите|сессии|токен|недействительн|устарел/i.test(msg);
+}
+
 export function ServicesPage() {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [sessionAuthHint, setSessionAuthHint] = useState(false);
   const [form, setForm] = useState(emptyOrderForm);
 
   useEffect(() => {
@@ -84,6 +103,7 @@ export function ServicesPage() {
   const onSubmit = async (event) => {
     event.preventDefault();
     setMessage("");
+    setSessionAuthHint(false);
     if (!form.serviceId.trim()) {
       setMessage("Выберите услугу на карточке выше.");
       return;
@@ -92,6 +112,10 @@ export function ServicesPage() {
       setMessage("Укажите марку и модель автомобиля.");
       return;
     }
+    if (!getAccessToken()) {
+      return;
+    }
+
     try {
       await createOrder({
         ...form,
@@ -100,11 +124,16 @@ export function ServicesPage() {
       setMessage("Заказ создан.");
       setForm(emptyOrderForm());
     } catch (error) {
+      if (isSessionAuthError(error)) {
+        setSessionAuthHint(true);
+        return;
+      }
       setMessage(error.response?.data?.error?.message ?? "Не удалось создать заказ.");
     }
   };
 
   const selectedService = services.find((s) => s.id === form.serviceId);
+  const hasSession = Boolean(getAccessToken());
 
   return (
     <main style={styles.page}>
@@ -174,6 +203,36 @@ export function ServicesPage() {
 
       <section style={styles.formSection}>
         <h3 style={styles.formTitle}>Создать заказ</h3>
+        {!hasSession ? (
+          <div style={styles.authCallout} role="status">
+            <p style={styles.authCalloutText}>
+              Чтобы оформить заказ, войдите в аккаунт или зарегистрируйтесь как клиент.
+            </p>
+            <div style={styles.authCalloutActions}>
+              <Link to={routes.login} style={styles.authLink}>
+                Войти
+              </Link>
+              <Link to={routes.register} style={styles.authLinkSecondary}>
+                Регистрация
+              </Link>
+            </div>
+          </div>
+        ) : null}
+        {sessionAuthHint ? (
+          <div style={styles.authCallout} role="alert">
+            <p style={styles.authCalloutText}>
+              Сессия недействительна или истекла. Войдите снова, чтобы отправить заказ.
+            </p>
+            <div style={styles.authCalloutActions}>
+              <Link to={routes.login} style={styles.authLink}>
+                Войти
+              </Link>
+              <Link to={routes.register} style={styles.authLinkSecondary}>
+                Регистрация
+              </Link>
+            </div>
+          </div>
+        ) : null}
         {selectedService ? (
           <div style={styles.selectedService} aria-live="polite">
             <span style={styles.selectedServiceLabel}>Выбранная услуга</span>
@@ -214,7 +273,7 @@ export function ServicesPage() {
             onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
             style={styles.input}
           />
-          <button type="submit" style={styles.submit}>
+          <button type="submit" style={styles.submit} disabled={!hasSession}>
             Отправить заказ
           </button>
         </form>
@@ -431,5 +490,36 @@ const styles = {
   message: {
     marginTop: "12px",
     color: "#bae6fd"
+  },
+  authCallout: {
+    marginBottom: "16px",
+    padding: "14px 16px",
+    borderRadius: "12px",
+    background: "rgba(30, 41, 59, 0.75)",
+    border: "1px solid rgba(251, 191, 36, 0.35)"
+  },
+  authCalloutText: {
+    margin: "0 0 12px",
+    fontSize: "14px",
+    lineHeight: 1.5,
+    color: "#fde68a"
+  },
+  authCalloutActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "12px",
+    alignItems: "center"
+  },
+  authLink: {
+    fontWeight: 600,
+    fontSize: "14px",
+    color: "#93c5fd",
+    textDecoration: "none"
+  },
+  authLinkSecondary: {
+    fontWeight: 500,
+    fontSize: "14px",
+    color: "#94a3b8",
+    textDecoration: "none"
   }
 };

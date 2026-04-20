@@ -63,11 +63,17 @@ export async function getOrdersForUser(user) {
     OWNER: {}
   };
 
+  const clientInclude =
+    user.role === "OWNER" || user.role === "MASTER"
+      ? { select: { id: true, name: true, phone: true } }
+      : { select: { id: true, name: true } };
+
   return prisma.order.findMany({
     where: whereByRole[user.role],
     orderBy: { createdAt: "desc" },
     include: {
       service: true,
+      payment: true,
       assignment: {
         include: {
           master: {
@@ -78,7 +84,7 @@ export async function getOrdersForUser(user) {
           }
         }
       },
-      client: user.role === "OWNER" ? { select: { id: true, name: true, phone: true } } : { select: { id: true, name: true } }
+      client: clientInclude
     }
   });
 }

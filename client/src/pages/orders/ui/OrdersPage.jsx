@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { getOrders } from "../../../features/orders";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { getOrders, updateOrderStatus } from "../../../features/orders";
+import { getAccessToken } from "../../../shared/api/axiosClient";
+import { getApiOrigin } from "../../../shared/lib/apiOrigin";
 import { getAuthUser } from "../../../shared/lib/auth";
 import { orderStatusLabel } from "../../../shared/lib/orderStatus";
 import {
@@ -12,9 +15,60 @@ function buildCarLabel(order) {
   return [order.carBrand, order.carModel, order.carYear].filter(Boolean).join(" · ") || "—";
 }
 
+const STATUS_FLOW = ["PENDING", "ASSIGNED", "EN_ROUTE", "IN_PROGRESS", "DONE"];
+const PAYMENT_STATUS_LABELS = {
+  PENDING: "Ожидает оплаты выезда",
+  CALLOUT_PAID: "Выезд оплачен",
+  AWAITING_FINAL: "Ожидает итоговую оплату",
+  FINAL_SENT: "Счёт отправлен",
+  COMPLETED: "Оплачено",
+  REFUNDED: "Возврат",
+};
+
+const STATUS_STYLES = {
+  PENDING: {
+    background: "#334155",
+    color: "#e2e8f0",
+  },
+  ASSIGNED: {
+    background: "#1d4ed8",
+    color: "#dbeafe",
+  },
+  EN_ROUTE: {
+    background: "#c2410c",
+    color: "#ffedd5",
+  },
+  IN_PROGRESS: {
+    background: "#7e22ce",
+    color: "#f3e8ff",
+  },
+  DONE: {
+    background: "#15803d",
+    color: "#dcfce7",
+  },
+  CANCELLED: {
+    background: "#b91c1c",
+    color: "#fee2e2",
+  },
+};
+
+function buildStatusHistory(status) {
+  const currentIndex = STATUS_FLOW.indexOf(status);
+  return [
+    { code: "PENDING", label: "Заявка создана", done: currentIndex >= 0 || status === "CANCELLED" },
+    { code: "ASSIGNED", label: "Мастер назначен", done: currentIndex >= 1 },
+    { code: "EN_ROUTE", label: "Мастер в пути", done: currentIndex >= 2 },
+    { code: "IN_PROGRESS", label: "Работа выполняется", done: currentIndex >= 3 },
+    { code: "DONE", label: "Работа завершена", done: currentIndex >= 4 },
+  ];
+}
+
 export function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState("active");
+  const socketRef = useRef(null);
   const [viewportWidth, setViewportWidth] = useState(() => {
     if (typeof window === "undefined") {
       return 1280;
@@ -26,6 +80,28 @@ export function OrdersPage() {
   const role = useMemo(() => getAuthUser()?.role ?? null, []);
   const detailCards = role === "OWNER" || role === "MASTER";
   const isMobile = viewportWidth <= 768;
+  const pageTitle = role === "OWNER" ? "Заказы клиентов" : role === "MASTER" ? "Заказы мастера" : "Мои заказы";
+  const activeOrders = useMemo(
+    () => orders.filter((order) => !["DONE", "CANCELLED"].includes(order.status)),
+    [orders]
+  );
+  const historyOrders = useMemo(
+    () => orders.filter((order) => ["DONE", "CANCELLED"].includes(order.status)),
+    [orders]
+  );
+  const visibleOrders = activeTab === "history" ? historyOrders : activeOrders;
+  const statusPillStyle = (status) => STATUS_STYLES[status] ?? STATUS_STYLES.PENDING;
+  const nextStatusByCurrent = {
+    PENDING: "ASSIGNED",
+    ASSIGNED: "EN_ROUTE",
+    EN_ROUTE: "IN_PROGRESS",
+    IN_PROGRESS: "DONE",
+  };
+
+  const reloadOrders = useCallback(async () => {
+    const result = await getOrders();
+    setOrders(result.data);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -36,15 +112,66 @@ export function OrdersPage() {
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [reloadOrders]);
 
   useEffect(() => {
-    getOrders()
-      .then((result) => setOrders(result.data))
+    reloadOrders()
+      .then(() => setError(""))
       .catch((requestError) => {
         setError(requestError.response?.data?.error?.message ?? "Не удалось загрузить заказы");
       });
   }, []);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) return undefined;
+
+    const socket = io(getApiOrigin(), {
+      auth: { token: `Bearer ${token}` },
+      withCredentials: true,
+    });
+    socketRef.current = socket;
+
+    socket.on("order:status", () => {
+      void reloadOrders();
+    });
+
+    socket.on("order:price", () => {
+      void reloadOrders();
+    });
+
+    return () => {
+      socket.close();
+      socketRef.current = null;
+    };
+  }, [reloadOrders]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !orders.length) return;
+    orders.forEach((order) => {
+      socket.emit("join:order", { orderId: order.id }, () => {});
+    });
+  }, [orders]);
+
+  const onMoveNext = async (orderId, currentStatus) => {
+    const nextStatus = nextStatusByCurrent[currentStatus];
+    if (!nextStatus) return;
+
+    try {
+      await updateOrderStatus(orderId, nextStatus);
+      setMessage(
+        currentStatus === "PENDING"
+          ? "Заказ взят в работу."
+          : `Статус изменён: ${orderStatusLabel(nextStatus)}.`
+      );
+      setError("");
+      await reloadOrders();
+    } catch (requestError) {
+      setMessage("");
+      setError(requestError.response?.data?.error?.message ?? "Не удалось обновить статус заказа.");
+    }
+  };
 
   return (
     <main style={{ ...styles.page, ...(isMobile ? styles.pageMobile : null) }}>
@@ -52,21 +179,40 @@ export function OrdersPage() {
         <div style={{ ...styles.header, ...(isMobile ? styles.headerMobile : null) }}>
           <div style={styles.headerCopy}>
             <span style={styles.eyebrow}>Заказы</span>
-            <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : null) }}>Мои заказы</h1>
+            <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : null) }}>{pageTitle}</h1>
             <p style={styles.subtitle}>
               Отслеживайте текущий статус заявок и быстро переходите к важным деталям без
               перегруженных карточек.
             </p>
           </div>
           <div style={{ ...styles.summaryCard, ...(isMobile ? styles.summaryCardMobile : null) }}>
-            <span style={styles.summaryLabel}>Всего заявок</span>
-            <strong style={styles.summaryValue}>{orders.length}</strong>
+            <span style={styles.summaryLabel}>
+              {activeTab === "history" ? "В истории" : "Текущих заявок"}
+            </span>
+            <strong style={styles.summaryValue}>{visibleOrders.length}</strong>
           </div>
         </div>
 
         {error ? <p style={styles.error}>{error}</p> : null}
+        {message ? <p style={styles.message}>{message}</p> : null}
+        <div style={styles.tabsRow}>
+          <button
+            type="button"
+            style={{ ...styles.tabButton, ...(activeTab === "active" ? styles.tabButtonActive : null) }}
+            onClick={() => setActiveTab("active")}
+          >
+            Текущие
+          </button>
+          <button
+            type="button"
+            style={{ ...styles.tabButton, ...(activeTab === "history" ? styles.tabButtonActive : null) }}
+            onClick={() => setActiveTab("history")}
+          >
+            История
+          </button>
+        </div>
         <div style={{ ...styles.list, ...(isMobile ? styles.listMobile : null) }}>
-          {orders.map((order) =>
+          {visibleOrders.map((order) =>
             detailCards ? (
               <article
                 key={order.id}
@@ -77,7 +223,9 @@ export function OrdersPage() {
                     <p style={styles.orderId}>#{order.id.slice(0, 8)}</p>
                     <strong style={styles.serviceTitle}>{order.service?.name ?? "Без услуги"}</strong>
                   </div>
-                  <span style={styles.status}>{orderStatusLabel(order.status)}</span>
+                  <span style={{ ...styles.status, ...statusPillStyle(order.status) }}>
+                    {orderStatusLabel(order.status)}
+                  </span>
                 </div>
 
                 <div
@@ -123,6 +271,20 @@ export function OrdersPage() {
                     <OrderDetailSections order={order} showMasterSection />
                   </div>
                 </details>
+
+                {role === "MASTER" && activeTab === "active" && nextStatusByCurrent[order.status] ? (
+                  <div style={styles.actionsRow}>
+                    <button
+                      type="button"
+                      style={styles.primaryButton}
+                      onClick={() => onMoveNext(order.id, order.status)}
+                    >
+                      {order.status === "PENDING"
+                        ? "Взять в работу"
+                        : `Перевести в «${orderStatusLabel(nextStatusByCurrent[order.status])}»`}
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ) : (
               <article
@@ -134,7 +296,9 @@ export function OrdersPage() {
                     <p style={styles.orderId}>#{order.id.slice(0, 8)}</p>
                     <p style={styles.service}>{order.service?.name ?? "Без услуги"}</p>
                   </div>
-                  <span style={styles.statusInline}>{orderStatusLabel(order.status)}</span>
+                  <span style={{ ...styles.statusInline, ...statusPillStyle(order.status) }}>
+                    {orderStatusLabel(order.status)}
+                  </span>
                 </div>
                 <div
                   style={{
@@ -160,10 +324,62 @@ export function OrdersPage() {
                     <p style={styles.commentText}>{order.comment.trim()}</p>
                   </div>
                 ) : null}
+
+                <div style={styles.historyCard}>
+                  <span style={styles.historyTitle}>История обработки</span>
+                  <div style={styles.historyList}>
+                    {buildStatusHistory(order.status).map((step) => (
+                      <div key={step.code} style={styles.historyItem}>
+                        <span
+                          style={{
+                            ...styles.historyDot,
+                            ...(step.done ? styles.historyDotDone : null),
+                          }}
+                        />
+                        <span
+                          style={{
+                            ...styles.historyText,
+                            ...(step.done ? styles.historyTextDone : null),
+                          }}
+                        >
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                    {order.status === "CANCELLED" ? (
+                      <div style={styles.historyItem}>
+                        <span style={{ ...styles.historyDot, ...styles.historyDotCancelled }} />
+                        <span style={{ ...styles.historyText, ...styles.historyTextCancelled }}>
+                          Заказ отменён
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div style={styles.metaItem}>
+                  <span style={styles.metaLabel}>Итоговая цена</span>
+                  <span style={styles.metaValue}>
+                    {order.finalPrice != null
+                      ? `${Number(order.finalPrice).toLocaleString("ru-RU")} ₽`
+                      : "Ещё не выставлена мастером"}
+                  </span>
+                  {order.payment?.status ? (
+                    <span style={styles.paymentHint}>
+                      Оплата: {PAYMENT_STATUS_LABELS[order.payment.status] ?? order.payment.status}
+                    </span>
+                  ) : null}
+                </div>
               </article>
             )
           )}
-          {!orders.length && !error ? <p style={styles.empty}>Пока нет созданных заказов.</p> : null}
+          {!visibleOrders.length && !error ? (
+            <p style={styles.empty}>
+              {activeTab === "history"
+                ? "Пока нет завершённых или отменённых заказов в истории."
+                : "Пока нет активных заказов."}
+            </p>
+          ) : null}
         </div>
       </section>
     </main>
@@ -246,6 +462,29 @@ const styles = {
     lineHeight: 1,
   },
   error: { color: "#fca5a5", marginBottom: "14px" },
+  message: { color: "#bfdbfe", marginBottom: "14px" },
+  tabsRow: {
+    display: "flex",
+    gap: "8px",
+    marginBottom: "14px",
+    flexWrap: "wrap",
+  },
+  tabButton: {
+    height: "34px",
+    borderRadius: "9px",
+    border: "1px solid rgba(148, 163, 184, 0.35)",
+    background: "rgba(15, 23, 42, 0.8)",
+    color: "#e2e8f0",
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "0 12px",
+    fontSize: "13px",
+  },
+  tabButtonActive: {
+    background: "rgba(37, 99, 235, 0.35)",
+    borderColor: "rgba(96, 165, 250, 0.8)",
+    color: "#dbeafe",
+  },
   list: {
     display: "grid",
     gap: "14px",
@@ -303,8 +542,6 @@ const styles = {
   status: {
     padding: "6px 10px",
     borderRadius: "999px",
-    background: "rgba(59, 130, 246, 0.2)",
-    color: "#bfdbfe",
     fontSize: "12px",
     fontWeight: 700,
     whiteSpace: "nowrap",
@@ -313,8 +550,6 @@ const styles = {
     display: "inline-block",
     padding: "6px 10px",
     borderRadius: "999px",
-    background: "rgba(59, 130, 246, 0.2)",
-    color: "#bfdbfe",
     fontSize: "12px",
     fontWeight: 700,
     whiteSpace: "nowrap",
@@ -360,6 +595,20 @@ const styles = {
   detailsContent: {
     marginTop: "12px",
   },
+  actionsRow: {
+    display: "flex",
+    justifyContent: "flex-start",
+  },
+  primaryButton: {
+    height: "40px",
+    border: "none",
+    borderRadius: "10px",
+    background: "linear-gradient(120deg, #2563eb, #3b82f6)",
+    color: "#fff",
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "0 14px",
+  },
   commentPreview: {
     display: "grid",
     gap: "6px",
@@ -381,6 +630,61 @@ const styles = {
     lineHeight: 1.55,
     fontSize: "14px",
     whiteSpace: "pre-wrap",
+  },
+  historyCard: {
+    display: "grid",
+    gap: "10px",
+    padding: "12px 14px",
+    borderRadius: "14px",
+    background: "rgba(15, 23, 42, 0.42)",
+    border: "1px solid rgba(148, 163, 184, 0.14)",
+  },
+  historyTitle: {
+    color: "#93c5fd",
+    fontSize: "12px",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    fontWeight: 700,
+  },
+  historyList: {
+    display: "grid",
+    gap: "7px",
+  },
+  historyItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  historyDot: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "999px",
+    background: "rgba(148, 163, 184, 0.45)",
+    flexShrink: 0,
+  },
+  historyDotDone: {
+    background: "#60a5fa",
+    boxShadow: "0 0 0 4px rgba(96, 165, 250, 0.12)",
+  },
+  historyDotCancelled: {
+    background: "#fca5a5",
+    boxShadow: "0 0 0 4px rgba(252, 165, 165, 0.12)",
+  },
+  historyText: {
+    color: "#94a3b8",
+    fontSize: "14px",
+    lineHeight: 1.4,
+  },
+  historyTextDone: {
+    color: "#dbeafe",
+  },
+  historyTextCancelled: {
+    color: "#fecaca",
+  },
+  paymentHint: {
+    color: "#94a3b8",
+    fontSize: "12px",
+    marginTop: "4px",
   },
   empty: { margin: 0, color: "#94a3b8" },
 };

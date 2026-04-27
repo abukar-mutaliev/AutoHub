@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import { subscribeMasterPush, unsubscribeMasterPush } from "../../../features/push";
 import { getOrders, setFinalPrice, updateOrderStatus } from "../../../features/orders";
+import { getAccessToken } from "../../../shared/api/axiosClient";
+import { getApiOrigin } from "../../../shared/lib/apiOrigin";
+import { getAuthUser } from "../../../shared/lib/auth";
 import { orderStatusLabel } from "../../../shared/lib/orderStatus";
 import { OrderDetailSections } from "../../../shared/ui/OrderDetailSections";
 
@@ -10,19 +15,117 @@ const nextStatusByCurrent = {
   IN_PROGRESS: "DONE"
 };
 
+function parseFinalPrice(rawValue) {
+  if (rawValue == null) return null;
+  const normalized = String(rawValue).trim().replace(",", ".");
+  if (!normalized) return null;
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
 export function MasterPage() {
   const [orders, setOrders] = useState([]);
   const [message, setMessage] = useState("");
   const [priceByOrder, setPriceByOrder] = useState({});
+  const [socketOk, setSocketOk] = useState(false);
+  const [pushOn, setPushOn] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const socketRef = useRef(null);
 
   async function reloadOrders() {
     const result = await getOrders();
     setOrders(result.data);
   }
 
+  const reloadRef = useRef(reloadOrders);
+  reloadRef.current = reloadOrders;
+
   useEffect(() => {
     reloadOrders().catch(() => setMessage("Не удалось загрузить заказы мастера."));
   }, []);
+
+  useEffect(() => {
+    if (getAuthUser()?.role !== "MASTER" || !("serviceWorker" in navigator)) {
+      return undefined;
+    }
+    let cancelled = false;
+    navigator.serviceWorker.ready
+      .then(async (registration) => {
+        const sub = await registration.pushManager.getSubscription();
+        if (!cancelled) {
+          setPushOn(!!sub);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (getAuthUser()?.role !== "MASTER") {
+      return undefined;
+    }
+    const token = getAccessToken();
+    if (!token) {
+      return undefined;
+    }
+    const socket = io(getApiOrigin(), {
+      auth: { token: `Bearer ${token}` },
+      withCredentials: true
+    });
+    socketRef.current = socket;
+    const onConnect = () => setSocketOk(true);
+    const onDisconnect = () => setSocketOk(false);
+    const refresh = () => {
+      void reloadRef.current();
+    };
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("order:status", refresh);
+    socket.on("order:price", refresh);
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.close();
+      socketRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) {
+      return undefined;
+    }
+    orders.forEach((order) => {
+      if (order.assignment) {
+        socket.emit("join:order", { orderId: order.id });
+      }
+    });
+    return undefined;
+  }, [orders]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) {
+      return undefined;
+    }
+    const enRoute = orders.filter((order) => order.status === "EN_ROUTE" && order.assignment?.id);
+    if (!enRoute.length) {
+      return undefined;
+    }
+    const send = () => {
+      enRoute.forEach((order) => {
+        const lat = Number(order.geoLat ?? 55.7558);
+        const lng = Number(order.geoLng ?? 37.6173);
+        socket.emit("assignment:location", { assignmentId: order.assignment.id, lat, lng });
+      });
+    };
+    send();
+    const id = setInterval(send, 30000);
+    return () => clearInterval(id);
+  }, [orders]);
 
   const onMoveNext = async (orderId, currentStatus) => {
     const nextStatus = nextStatusByCurrent[currentStatus];
@@ -37,13 +140,43 @@ export function MasterPage() {
     }
   };
 
+  const onEnablePush = async () => {
+    setPushBusy(true);
+    try {
+      await subscribeMasterPush();
+      setPushOn(true);
+      setMessage("Push-уведомления включены (в т.ч. при новом назначении).");
+    } catch (error) {
+      setMessage(error.response?.data?.error?.message ?? error.message ?? "Не удалось включить push.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const onDisablePush = async () => {
+    setPushBusy(true);
+    try {
+      await unsubscribeMasterPush();
+      setPushOn(false);
+      setMessage("Push отключён.");
+    } catch (error) {
+      setMessage(error.response?.data?.error?.message ?? error.message ?? "Не удалось отключить push.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const onSetFinalPrice = async (orderId) => {
-    const value = Number(priceByOrder[orderId]);
-    if (!value || value <= 0) return;
+    const value = parseFinalPrice(priceByOrder[orderId]);
+    if (value == null) {
+      setMessage("Укажите корректную итоговую цену (число больше 0).");
+      return;
+    }
 
     try {
       await setFinalPrice(orderId, value);
       setMessage("Итоговая цена отправлена владельцу.");
+      setPriceByOrder((prev) => ({ ...prev, [orderId]: "" }));
       await reloadOrders();
     } catch (error) {
       setMessage(error.response?.data?.error?.message ?? "Не удалось отправить итоговую цену.");
@@ -54,7 +187,22 @@ export function MasterPage() {
     <main style={styles.page}>
       <section style={styles.panel}>
         <h1 style={styles.title}>Панель мастера</h1>
-        <p style={styles.subtitle}>Обновляйте этап работы и отправляйте финальную стоимость владельцу.</p>
+        <p style={styles.subtitle}>
+          Обновляйте этап работы и отправляйте финальную стоимость владельцу. Real-time:{" "}
+          {socketOk ? "ON" : "OFF"} · координаты в «В пути» каждые 30 с (или из заказа, если нет GPS).
+        </p>
+        <div style={styles.pwaRow}>
+          <span style={styles.pwaLabel}>PWA / push: {pushOn ? "включено" : "выключено"}</span>
+          {pushOn ? (
+            <button type="button" style={styles.ghostButton} disabled={pushBusy} onClick={() => void onDisablePush()}>
+              Отключить уведомления
+            </button>
+          ) : (
+            <button type="button" style={styles.ghostButton} disabled={pushBusy} onClick={() => void onEnablePush()}>
+              Включить уведомления
+            </button>
+          )}
+        </div>
         {message ? <p style={styles.message}>{message}</p> : null}
 
         <div style={styles.list}>
@@ -69,7 +217,7 @@ export function MasterPage() {
                 <p style={styles.serviceDescription}>{order.service.description}</p>
               ) : null}
 
-              <OrderDetailSections order={order} showMasterSection={false} />
+              <OrderDetailSections order={order} showMasterSection={false} hideClientPhone />
 
               <div style={styles.actions}>
                 {nextStatusByCurrent[order.status] ? (
@@ -190,4 +338,27 @@ const styles = {
     outline: "none",
   },
   empty: { margin: 0, color: "#94a3b8" },
+  pwaRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "10px",
+    alignItems: "center",
+    marginBottom: "10px",
+    padding: "10px 12px",
+    borderRadius: "10px",
+    border: "1px solid rgba(148, 163, 184, 0.2)",
+    background: "rgba(15, 23, 42, 0.45)"
+  },
+  pwaLabel: { color: "#cbd5e1", fontSize: "14px" },
+  ghostButton: {
+    height: "34px",
+    borderRadius: "8px",
+    border: "1px solid rgba(148, 163, 184, 0.35)",
+    background: "rgba(15, 23, 42, 0.8)",
+    color: "#e2e8f0",
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: "0 12px",
+    fontSize: "13px"
+  }
 };

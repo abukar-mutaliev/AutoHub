@@ -133,7 +133,9 @@ export function HomePage() {
           <div style={styles.heroMain}>
             <div style={styles.badgeRow}>
               <span style={styles.badge}>AutoHub</span>
-              <span style={styles.badgeNote}>Выездной сервис нового поколения</span>
+              <span style={{ ...styles.badgeNote, ...(isMobile ? styles.badgeNoteMobile : null) }}>
+                Выездной сервис нового поколения
+              </span>
             </div>
             <h1 style={{ ...styles.title, ...(isMobile ? styles.titleMobile : null) }}>
               Современный выездной автосервис без ожидания в очередях
@@ -204,8 +206,16 @@ export function HomePage() {
                     ...(isCompact ? styles.metricCardCompact : null),
                   }}
                 >
-                  <strong style={styles.metricValue}>{metric.value}</strong>
-                  <span style={styles.metricLabel}>{metric.label}</span>
+                  <strong
+                    style={{ ...styles.metricValue, ...(isMobile ? styles.metricValueMobile : null) }}
+                  >
+                    {metric.value}
+                  </strong>
+                  <span
+                    style={{ ...styles.metricLabel, ...(isMobile ? styles.metricLabelMobile : null) }}
+                  >
+                    {metric.label}
+                  </span>
                 </article>
               ))}
             </div>
@@ -224,18 +234,30 @@ export function HomePage() {
               }}
             >
               <div style={styles.previewHeader}>
-                <span style={styles.previewBadge}>Заявка активна</span>
-                <span style={styles.previewMeta}>Сегодня, 14:30</span>
+                <span style={{ ...styles.previewBadge, ...(isMobile ? styles.previewBadgeMobile : null) }}>
+                  Заявка активна
+                </span>
+                <span style={{ ...styles.previewMeta, ...(isMobile ? styles.previewMetaMobile : null) }}>
+                  Сегодня, 14:30
+                </span>
               </div>
 
               <div style={styles.previewRoute}>
                 <div>
-                  <p style={styles.previewLabel}>Услуга</p>
-                  <strong style={styles.previewValue}>Диагностика и запуск двигателя</strong>
+                  <p style={{ ...styles.previewLabel, ...(isMobile ? styles.previewLabelMobile : null) }}>
+                    Услуга
+                  </p>
+                  <strong style={{ ...styles.previewValue, ...(isMobile ? styles.previewValueMobile : null) }}>
+                    Диагностика и запуск двигателя
+                  </strong>
                 </div>
                 <div>
-                  <p style={styles.previewLabel}>Локация</p>
-                  <strong style={styles.previewValue}>Выезд к клиенту за 35 минут</strong>
+                  <p style={{ ...styles.previewLabel, ...(isMobile ? styles.previewLabelMobile : null) }}>
+                    Локация
+                  </p>
+                  <strong style={{ ...styles.previewValue, ...(isMobile ? styles.previewValueMobile : null) }}>
+                    Выезд к клиенту за 35 минут
+                  </strong>
                 </div>
               </div>
 
@@ -243,22 +265,34 @@ export function HomePage() {
                 <div style={styles.timelineItem}>
                   <span style={{ ...styles.timelineDot, ...styles.timelineDotActive }} />
                   <div>
-                    <p style={styles.timelineTitle}>Заявка подтверждена</p>
-                    <p style={styles.timelineText}>Стоимость и время приезда уже зафиксированы.</p>
+                    <p style={{ ...styles.timelineTitle, ...(isMobile ? styles.timelineTitleMobile : null) }}>
+                      Заявка подтверждена
+                    </p>
+                    <p style={{ ...styles.timelineText, ...(isMobile ? styles.timelineTextMobile : null) }}>
+                      Стоимость и время приезда уже зафиксированы.
+                    </p>
                   </div>
                 </div>
                 <div style={styles.timelineItem}>
                   <span style={styles.timelineDot} />
                   <div>
-                    <p style={styles.timelineTitle}>Мастер в пути</p>
-                    <p style={styles.timelineText}>Вы видите следующий этап и остаетесь на связи.</p>
+                    <p style={{ ...styles.timelineTitle, ...(isMobile ? styles.timelineTitleMobile : null) }}>
+                      Мастер в пути
+                    </p>
+                    <p style={{ ...styles.timelineText, ...(isMobile ? styles.timelineTextMobile : null) }}>
+                      Вы видите следующий этап и остаетесь на связи.
+                    </p>
                   </div>
                 </div>
                 <div style={styles.timelineItem}>
                   <span style={styles.timelineDot} />
                   <div>
-                    <p style={styles.timelineTitle}>Завершение обслуживания</p>
-                    <p style={styles.timelineText}>Финальный статус и история работ сохраняются в аккаунте.</p>
+                    <p style={{ ...styles.timelineTitle, ...(isMobile ? styles.timelineTitleMobile : null) }}>
+                      Завершение обслуживания
+                    </p>
+                    <p style={{ ...styles.timelineText, ...(isMobile ? styles.timelineTextMobile : null) }}>
+                      Финальный статус и история работ сохраняются в аккаунте.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -266,7 +300,7 @@ export function HomePage() {
 
             <div style={styles.insightCard}>
               <span style={styles.insightLabel}>Почему это удобно</span>
-              <p style={styles.insightText}>
+              <p style={{ ...styles.insightText, ...(isMobile ? styles.insightTextMobile : null) }}>
                 Вместо долгого ожидания в сервисе вы сразу видите этапы заявки, ориентир по
                 времени и понятный сценарий обслуживания.
               </p>
@@ -291,9 +325,20 @@ export function HomePage() {
                 ...(isMobile ? styles.featureCardMobile : null),
               }}
             >
-              <span style={styles.featureIndex}>0{index + 1}</span>
-              <h3 style={styles.featureTitle}>{feature.title}</h3>
-              <p style={styles.featureDescription}>{feature.description}</p>
+              <span style={{ ...styles.featureIndex, ...(isMobile ? styles.featureIndexMobile : null) }}>
+                0{index + 1}
+              </span>
+              <h3 style={{ ...styles.featureTitle, ...(isMobile ? styles.featureTitleMobile : null) }}>
+                {feature.title}
+              </h3>
+              <p
+                style={{
+                  ...styles.featureDescription,
+                  ...(isMobile ? styles.featureDescriptionMobile : null),
+                }}
+              >
+                {feature.description}
+              </p>
             </article>
           ))}
         </div>
@@ -315,9 +360,20 @@ export function HomePage() {
                 ...(isMobile ? styles.flowCardMobile : null),
               }}
             >
-              <span style={styles.flowStep}>{item.step}</span>
-              <h3 style={styles.flowTitle}>{item.title}</h3>
-              <p style={styles.flowDescription}>{item.description}</p>
+              <span style={{ ...styles.flowStep, ...(isMobile ? styles.flowStepMobile : null) }}>
+                {item.step}
+              </span>
+              <h3 style={{ ...styles.flowTitle, ...(isMobile ? styles.flowTitleMobile : null) }}>
+                {item.title}
+              </h3>
+              <p
+                style={{
+                  ...styles.flowDescription,
+                  ...(isMobile ? styles.flowDescriptionMobile : null),
+                }}
+              >
+                {item.description}
+              </p>
             </article>
           ))}
         </div>
@@ -340,9 +396,20 @@ export function HomePage() {
                 ...(isMobile ? styles.quickLinkMobile : null),
               }}
             >
-              <span style={styles.quickLinkLabel}>{link.label}</span>
-              <span style={styles.quickLinkDescription}>{link.description}</span>
-              <span style={styles.quickLinkArrow}>Перейти</span>
+              <span style={{ ...styles.quickLinkLabel, ...(isMobile ? styles.quickLinkLabelMobile : null) }}>
+                {link.label}
+              </span>
+              <span
+                style={{
+                  ...styles.quickLinkDescription,
+                  ...(isMobile ? styles.quickLinkDescriptionMobile : null),
+                }}
+              >
+                {link.description}
+              </span>
+              <span style={{ ...styles.quickLinkArrow, ...(isMobile ? styles.quickLinkArrowMobile : null) }}>
+                Перейти
+              </span>
             </Link>
           ))}
         </div>
@@ -440,6 +507,9 @@ const styles = {
     fontSize: "13px",
     letterSpacing: "0.02em",
   },
+  badgeNoteMobile: {
+    fontSize: "12px",
+  },
   title: {
     margin: 0,
     fontSize: "clamp(30px, 5vw, 52px)",
@@ -536,10 +606,16 @@ const styles = {
     color: "#f8fafc",
     lineHeight: 1,
   },
+  metricValueMobile: {
+    fontSize: "20px",
+  },
   metricLabel: {
     color: "#94a3b8",
     lineHeight: 1.45,
     fontSize: "14px",
+  },
+  metricLabelMobile: {
+    fontSize: "13px",
   },
   previewCard: {
     display: "grid",
@@ -572,9 +648,15 @@ const styles = {
     fontSize: "13px",
     fontWeight: 600,
   },
+  previewBadgeMobile: {
+    fontSize: "12px",
+  },
   previewMeta: {
     color: "#94a3b8",
     fontSize: "13px",
+  },
+  previewMetaMobile: {
+    fontSize: "12px",
   },
   previewRoute: {
     display: "grid",
@@ -587,10 +669,17 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.06em",
   },
+  previewLabelMobile: {
+    fontSize: "11px",
+  },
   previewValue: {
     color: "#f8fafc",
     fontSize: "16px",
     lineHeight: 1.45,
+  },
+  previewValueMobile: {
+    fontSize: "14px",
+    lineHeight: 1.4,
   },
   timeline: {
     display: "grid",
@@ -620,11 +709,18 @@ const styles = {
     fontSize: "15px",
     fontWeight: 600,
   },
+  timelineTitleMobile: {
+    fontSize: "14px",
+  },
   timelineText: {
     margin: 0,
     color: "#94a3b8",
     lineHeight: 1.5,
     fontSize: "14px",
+  },
+  timelineTextMobile: {
+    fontSize: "13px",
+    lineHeight: 1.45,
   },
   insightCard: {
     padding: "18px 20px",
@@ -644,6 +740,10 @@ const styles = {
     margin: 0,
     color: "#cbd5e1",
     lineHeight: 1.6,
+  },
+  insightTextMobile: {
+    fontSize: "14px",
+    lineHeight: 1.55,
   },
   sectionBlock: {
     display: "grid",
@@ -706,15 +806,28 @@ const styles = {
     color: "#bfdbfe",
     fontWeight: 700,
   },
+  featureIndexMobile: {
+    width: "38px",
+    height: "38px",
+    fontSize: "14px",
+  },
   featureTitle: {
     margin: 0,
     color: "#f1f5f9",
     fontSize: "20px",
   },
+  featureTitleMobile: {
+    fontSize: "18px",
+    lineHeight: 1.25,
+  },
   featureDescription: {
     margin: 0,
     color: "#cbd5e1",
     lineHeight: 1.55,
+  },
+  featureDescriptionMobile: {
+    fontSize: "14px",
+    lineHeight: 1.5,
   },
   flowGrid: {
     display: "grid",
@@ -739,15 +852,26 @@ const styles = {
     fontWeight: 700,
     letterSpacing: "0.08em",
   },
+  flowStepMobile: {
+    fontSize: "12px",
+  },
   flowTitle: {
     margin: 0,
     color: "#f8fafc",
     fontSize: "19px",
   },
+  flowTitleMobile: {
+    fontSize: "17px",
+    lineHeight: 1.25,
+  },
   flowDescription: {
     margin: 0,
     color: "#cbd5e1",
     lineHeight: 1.6,
+  },
+  flowDescriptionMobile: {
+    fontSize: "14px",
+    lineHeight: 1.5,
   },
   linksBlock: {
     borderRadius: "24px",
@@ -796,13 +920,24 @@ const styles = {
     fontSize: "18px",
     fontWeight: 600,
   },
+  quickLinkLabelMobile: {
+    fontSize: "16px",
+    lineHeight: 1.3,
+  },
   quickLinkDescription: {
     color: "#94a3b8",
     lineHeight: 1.55,
+  },
+  quickLinkDescriptionMobile: {
+    fontSize: "14px",
+    lineHeight: 1.5,
   },
   quickLinkArrow: {
     marginTop: "auto",
     color: "#93c5fd",
     fontSize: "14px",
+  },
+  quickLinkArrowMobile: {
+    fontSize: "13px",
   },
 };

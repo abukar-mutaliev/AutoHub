@@ -8,5 +8,8 @@ export const env = {
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET ?? "dev_access_secret_1234567890",
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? "dev_refresh_secret_1234567890",
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES ?? "15m",
-  jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? "7d"
+  jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES ?? "7d",
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:noreply@localhost"
 };

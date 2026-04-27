@@ -2,26 +2,31 @@ import { randomUUID } from "node:crypto";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import morgan from "morgan";
 import { env } from "./config/env.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 import { assignmentsRouter } from "./routes/assignments.routes.js";
+import { analyticsRouter } from "./routes/analytics.routes.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { ordersRouter } from "./routes/orders.routes.js";
+import { paymentsRouter } from "./routes/payments.routes.js";
+import { pushRouter } from "./routes/push.routes.js";
 import { servicesRouter } from "./routes/services.routes.js";
 import { usersRouter } from "./routes/users.routes.js";
 
 export function createApp() {
   const app = express();
-  const allowedOrigins = new Set([env.frontendUrl, "http://localhost:5173", "http://127.0.0.1:5173"]);
+  const allowedOrigins = new Set([
+    env.frontendUrl,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173"
+  ]);
 
   app.use(helmet());
-  app.use((req, res, next) => {
-    req.requestId = randomUUID();
-    res.setHeader("X-Request-Id", req.requestId);
-    return next();
-  });
   app.use(
     cors({
       origin(origin, callback) {
@@ -34,6 +39,20 @@ export function createApp() {
       credentials: true
     })
   );
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Do not throttle CORS preflight requests.
+    skip: (req) => req.method === "OPTIONS"
+  });
+  app.use("/api/v1", apiLimiter);
+  app.use((req, res, next) => {
+    req.requestId = randomUUID();
+    res.setHeader("X-Request-Id", req.requestId);
+    return next();
+  });
   app.use(
     morgan(
       (tokens, req, res) =>
@@ -62,6 +81,9 @@ export function createApp() {
   app.use("/api/v1/orders", ordersRouter);
   app.use("/api/v1/assignments", assignmentsRouter);
   app.use("/api/v1/users", usersRouter);
+  app.use("/api/v1/payments", paymentsRouter);
+  app.use("/api/v1/analytics", analyticsRouter);
+  app.use("/api/v1/push", pushRouter);
   app.use(errorMiddleware);
 
   return app;

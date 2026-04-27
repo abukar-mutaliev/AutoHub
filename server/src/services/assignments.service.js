@@ -1,5 +1,7 @@
+import { emitMasterLocation } from "../lib/realtime.js";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../utils/httpError.js";
+import { notifyMasterNewAssignment } from "./push.service.js";
 
 async function ensureMaster(masterId) {
   const master = await prisma.user.findUnique({ where: { id: masterId } });
@@ -23,18 +25,24 @@ export async function createAssignment(payload) {
 
   await ensureMaster(payload.masterId);
 
-  return prisma.assignment.create({
+  const created = await prisma.assignment.create({
     data: {
       orderId: payload.orderId,
       masterId: payload.masterId
     },
     include: {
-      order: true,
+      order: { include: { service: true } },
       master: {
         select: { id: true, name: true, phone: true }
       }
     }
   });
+  void notifyMasterNewAssignment(payload.masterId, {
+    body: `Вам назначена заявка: ${created.order?.service?.name ?? "заявка"}`,
+    orderId: created.orderId,
+    url: "/master"
+  }).catch(() => {});
+  return created;
 }
 
 export async function reassign(assignmentId, masterId) {
@@ -45,14 +53,20 @@ export async function reassign(assignmentId, masterId) {
 
   await ensureMaster(masterId);
 
-  return prisma.assignment.update({
+  const updated = await prisma.assignment.update({
     where: { id: assignmentId },
     data: { masterId },
     include: {
-      order: true,
+      order: { include: { service: true } },
       master: { select: { id: true, name: true, phone: true } }
     }
   });
+  void notifyMasterNewAssignment(masterId, {
+    body: `Вам переназначена заявка: ${updated.order?.service?.name ?? "заявка"}`,
+    orderId: updated.orderId,
+    url: "/master"
+  }).catch(() => {});
+  return updated;
 }
 
 export async function updateAssignmentLocation(user, assignmentId, payload) {
@@ -64,10 +78,12 @@ export async function updateAssignmentLocation(user, assignmentId, payload) {
     throw new HttpError(403, "FORBIDDEN", "Assignment does not belong to current master");
   }
 
-  return prisma.assignment.update({
+  const updated = await prisma.assignment.update({
     where: { id: assignmentId },
     data: { gpsLat: payload.lat, gpsLng: payload.lng }
   });
+  emitMasterLocation(assignmentId, payload.lat, payload.lng);
+  return updated;
 }
 
 export async function getActiveAssignments() {

@@ -24,3 +24,8 @@ export async function approvePrice(orderId) {
   const response = await axiosClient.patch(`/orders/${orderId}/approve-price`);
   return response.data;
 }
+
+export async function sendInvoice(orderId) {
+  const response = await axiosClient.post(`/orders/${orderId}/send-invoice`);
+  return response.data;
+}

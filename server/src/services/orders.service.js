@@ -1,3 +1,4 @@
+import { emitOrderPrice, emitOrderStatus } from "../lib/realtime.js";
 import { prisma } from "../lib/prisma.js";
 import { HttpError } from "../utils/httpError.js";
 
@@ -64,7 +65,7 @@ export async function getOrdersForUser(user) {
   };
 
   const clientInclude =
-    user.role === "OWNER" || user.role === "MASTER"
+    user.role === "OWNER"
       ? { select: { id: true, name: true, phone: true } }
       : { select: { id: true, name: true } };
 
@@ -145,10 +146,20 @@ export async function updateOrderStatus(user, orderId, status) {
     throw new HttpError(409, "ORDER_WRONG_STATUS", "Смена статуса в этом состоянии невозможна.");
   }
 
-  return prisma.order.update({
+  const now = new Date();
+  const updated = await prisma.order.update({
     where: { id: orderId },
-    data: { status }
+    data: {
+      status,
+      assignedAt: status === "ASSIGNED" ? now : undefined,
+      enRouteAt: status === "EN_ROUTE" ? now : undefined,
+      inProgressAt: status === "IN_PROGRESS" ? now : undefined,
+      doneAt: status === "DONE" ? now : undefined,
+      cancelledAt: status === "CANCELLED" ? now : undefined
+    }
   });
+  emitOrderStatus(orderId, status);
+  return updated;
 }
 
 export async function setFinalPrice(user, orderId, finalPrice) {
@@ -162,7 +173,7 @@ export async function setFinalPrice(user, orderId, finalPrice) {
     throw new HttpError(409, "ORDER_WRONG_STATUS", "Итоговая цена задаётся только в статусах «В пути» или «В работе».");
   }
 
-  return prisma.order.update({
+  const updated = await prisma.order.update({
     where: { id: orderId },
     data: {
       finalPrice,
@@ -175,15 +186,49 @@ export async function setFinalPrice(user, orderId, finalPrice) {
     },
     include: { payment: true }
   });
+  emitOrderPrice(orderId, finalPrice);
+  return updated;
 }
 
 export async function approveOrderPrice(orderId) {
-  await findOrderOrThrow(orderId);
+  const order = await findOrderOrThrow(orderId);
+
+  if (!order.finalPrice) {
+    throw new HttpError(409, "ORDER_WRONG_STATUS", "Нельзя подтвердить цену, пока мастер не указал итоговую сумму.");
+  }
+
+  if (!order.payment || order.payment.status !== "AWAITING_FINAL") {
+    throw new HttpError(409, "ORDER_WRONG_STATUS", "Цена уже обработана или заказ не готов к подтверждению.");
+  }
 
   return prisma.order.update({
     where: { id: orderId },
     data: {
-      priceApproved: true,
+      priceApproved: true
+    },
+    include: { payment: true }
+  });
+}
+
+export async function sendInvoice(orderId) {
+  const order = await findOrderOrThrow(orderId);
+
+  if (!order.payment) {
+    throw new HttpError(404, "NOT_FOUND", "Платёж по заказу не найден.");
+  }
+  if (!order.finalPrice) {
+    throw new HttpError(409, "ORDER_WRONG_STATUS", "Нельзя отправить счёт без итоговой стоимости.");
+  }
+  if (!order.priceApproved) {
+    throw new HttpError(409, "PRICE_NOT_APPROVED", "Сначала подтвердите цену, затем отправляйте счёт клиенту.");
+  }
+  if (order.payment.status !== "AWAITING_FINAL") {
+    throw new HttpError(409, "ORDER_WRONG_STATUS", "Счёт уже отправлен или заказ не готов к отправке счёта.");
+  }
+
+  return prisma.order.update({
+    where: { id: orderId },
+    data: {
       payment: {
         update: {
           status: "FINAL_SENT"

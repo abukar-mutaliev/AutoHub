@@ -141,12 +141,17 @@ async function main() {
   ]);
 
   const now = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysAgo = (days) => new Date(now.getTime() - days * dayMs);
   const inTwoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000);
   const inFiveHours = new Date(now.getTime() + 5 * 60 * 60 * 1000);
   const oneHourAgo = new Date(now.getTime() - 1 * 60 * 60 * 1000);
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
   const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = daysAgo(3);
+  const twelveDaysAgo = daysAgo(12);
+  const fortyFiveDaysAgo = daysAgo(45);
+  const oneHundredTwentyDaysAgo = daysAgo(120);
 
   const orderPending = await prisma.order.create({
     data: {
@@ -165,6 +170,7 @@ async function main() {
       carYear: 2018,
       comment: "Правое колесо прокололось",
       scheduledAt: inTwoHours,
+      createdAt: oneHourAgo,
       payment: {
         create: {
           calloutAmount: services[0].calloutFee,
@@ -190,12 +196,13 @@ async function main() {
       carYear: 2017,
       comment: "Автомобиль не заводится",
       scheduledAt: inFiveHours,
+      createdAt: twelveDaysAgo,
       payment: {
         create: {
           calloutAmount: services[1].calloutFee,
           finalAmount: services[1].price,
           status: "CALLOUT_PAID",
-          calloutPaidAt: oneHourAgo
+          calloutPaidAt: twelveDaysAgo
         }
       }
     }
@@ -216,12 +223,13 @@ async function main() {
       carYear: 2015,
       comment: "Горит индикатор неисправности двигателя.",
       scheduledAt: oneHourAgo,
+      createdAt: threeDaysAgo,
       payment: {
         create: {
           calloutAmount: services[2].calloutFee,
           finalAmount: 2800,
           status: "AWAITING_FINAL",
-          calloutPaidAt: twoHoursAgo
+          calloutPaidAt: threeDaysAgo
         }
       }
     }
@@ -244,13 +252,14 @@ async function main() {
       carYear: 2019,
       comment: "Техническое обслуживание перед дальней поездкой",
       scheduledAt: threeDaysAgo,
+      createdAt: fortyFiveDaysAgo,
       payment: {
         create: {
           calloutAmount: services[3].calloutFee,
           finalAmount: services[3].price,
           status: "COMPLETED",
-          calloutPaidAt: fourHoursAgo,
-          finalPaidAt: twoHoursAgo
+          calloutPaidAt: fortyFiveDaysAgo,
+          finalPaidAt: fortyFiveDaysAgo
         }
       }
     }
@@ -270,6 +279,7 @@ async function main() {
       carModel: "Focus",
       carYear: 2012,
       comment: "Клиент отменил заявку",
+      createdAt: oneHundredTwentyDaysAgo,
       payment: {
         create: {
           calloutAmount: services[1].calloutFee,

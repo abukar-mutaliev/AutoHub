@@ -1,9 +1,10 @@
 import { Router } from "express";
+import { auditFinance } from "../lib/logger.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { roleMiddleware } from "../middleware/role.middleware.js";
 import { validateMiddleware } from "../middleware/validate.middleware.js";
 import { createOrderSchema, setFinalPriceSchema, updateOrderStatusSchema } from "../schemas/orders.schema.js";
-import { approveOrderPrice, cancelOrder, createOrder, getOrderByIdForUser, getOrdersForUser, setFinalPrice, updateOrderStatus } from "../services/orders.service.js";
+import { approveOrderPrice, cancelOrder, createOrder, getOrderByIdForUser, getOrdersForUser, sendInvoice, setFinalPrice, updateOrderStatus } from "../services/orders.service.js";
 
 export const ordersRouter = Router();
 
@@ -54,6 +55,13 @@ ordersRouter.patch("/:id/status", roleMiddleware(["MASTER", "OWNER"]), validateM
 ordersRouter.patch("/:id/final-price", roleMiddleware(["MASTER"]), validateMiddleware(setFinalPriceSchema), async (req, res, next) => {
   try {
     const order = await setFinalPrice(req.user, req.params.id, req.validatedBody.finalPrice);
+    auditFinance("order_final_price", {
+      requestId: req.requestId,
+      userId: req.user.id,
+      role: req.user.role,
+      orderId: req.params.id,
+      body: req.validatedBody
+    });
     return res.json({ data: order });
   } catch (error) {
     return next(error);
@@ -63,6 +71,12 @@ ordersRouter.patch("/:id/final-price", roleMiddleware(["MASTER"]), validateMiddl
 ordersRouter.patch("/:id/approve-price", roleMiddleware(["OWNER"]), async (req, res, next) => {
   try {
     const order = await approveOrderPrice(req.params.id);
+    auditFinance("order_approve_price", {
+      requestId: req.requestId,
+      userId: req.user.id,
+      role: req.user.role,
+      orderId: req.params.id
+    });
     return res.json({ data: order });
   } catch (error) {
     return next(error);
@@ -72,6 +86,15 @@ ordersRouter.patch("/:id/approve-price", roleMiddleware(["OWNER"]), async (req, 
 ordersRouter.post("/:id/cancel", roleMiddleware(["CLIENT", "OWNER"]), async (req, res, next) => {
   try {
     const order = await cancelOrder(req.user, req.params.id);
+    return res.json({ data: order });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+ordersRouter.post("/:id/send-invoice", roleMiddleware(["OWNER"]), async (req, res, next) => {
+  try {
+    const order = await sendInvoice(req.params.id);
     return res.json({ data: order });
   } catch (error) {
     return next(error);

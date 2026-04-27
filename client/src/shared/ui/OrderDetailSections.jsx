@@ -67,7 +67,7 @@ function DetailRow({ label, children }) {
   );
 }
 
-export function OrderDetailSections({ order, showMasterSection = true }) {
+export function OrderDetailSections({ order, showMasterSection = true, hideClientPhone = false }) {
   const coords = mapsHref(order.geoLat, order.geoLng);
   const payment = order.payment;
   const masterName = order.assignment?.master?.name;
@@ -78,8 +78,23 @@ export function OrderDetailSections({ order, showMasterSection = true }) {
         <div style={detailStyles.detailSection}>
           <h2 style={detailStyles.sectionTitle}>Мастер</h2>
           <DetailRow label="Назначен">{masterName ?? "Пока не назначен"}</DetailRow>
+          <DetailRow label="Взял в работу">
+            {masterName && order.assignedAt
+              ? `${masterName}, ${formatDateTime(order.assignedAt)}`
+              : "Ещё не взят в работу"}
+          </DetailRow>
         </div>
       ) : null}
+
+      <div style={detailStyles.detailSection}>
+        <h2 style={detailStyles.sectionTitle}>История статусов</h2>
+        <DetailRow label="Создан">{formatDateTime(order.pendingAt ?? order.createdAt) ?? "—"}</DetailRow>
+        <DetailRow label="Назначен мастеру">{formatDateTime(order.assignedAt) ?? "—"}</DetailRow>
+        <DetailRow label="Мастер в пути">{formatDateTime(order.enRouteAt) ?? "—"}</DetailRow>
+        <DetailRow label="В работе">{formatDateTime(order.inProgressAt) ?? "—"}</DetailRow>
+        <DetailRow label="Завершён">{formatDateTime(order.doneAt) ?? "—"}</DetailRow>
+        <DetailRow label="Отменён">{formatDateTime(order.cancelledAt) ?? "—"}</DetailRow>
+      </div>
 
       <div style={detailStyles.detailSection}>
         <h2 style={detailStyles.sectionTitle}>Автомобиль</h2>
@@ -92,7 +107,9 @@ export function OrderDetailSections({ order, showMasterSection = true }) {
         <h2 style={detailStyles.sectionTitle}>Клиент</h2>
         <DetailRow label="Имя">{order.client?.name ?? "—"}</DetailRow>
         <DetailRow label="Телефон">
-          {order.client?.phone ? (
+          {hideClientPhone ? (
+            "Скрыто платформой (для мастера телефон недоступен)"
+          ) : order.client?.phone ? (
             <a href={`tel:${order.client.phone}`} style={detailStyles.link}>
               {order.client.phone}
             </a>

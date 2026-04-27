@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { HttpError } from "../utils/httpError.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { validateMiddleware } from "../middleware/validate.middleware.js";
@@ -19,6 +20,21 @@ function setRefreshCookie(res, refreshToken) {
 
 export const authRouter = Router();
 
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: {
+        code: "TOO_MANY_REQUESTS",
+        message: "Слишком много попыток входа. Подождите минуту."
+      }
+    });
+  }
+});
+
 authRouter.post("/register", validateMiddleware(registerSchema), async (req, res, next) => {
   try {
     const user = await registerClient(req.validatedBody);
@@ -32,7 +48,7 @@ authRouter.post("/register", validateMiddleware(registerSchema), async (req, res
   }
 });
 
-authRouter.post("/login", validateMiddleware(loginSchema), async (req, res, next) => {
+authRouter.post("/login", loginLimiter, validateMiddleware(loginSchema), async (req, res, next) => {
   try {
     const user = await loginByPhone(req.validatedBody.phone, req.validatedBody.password);
     const accessToken = signAccessToken(user);

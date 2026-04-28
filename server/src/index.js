@@ -7,7 +7,6 @@ const app = createApp();
 const server = http.createServer(app);
 initSocketIo(server);
 
-server.listen(env.port, () => {
-  // eslint-disable-next-line no-console
-  console.log(`API + WebSocket on http://localhost:${env.port}`);
+server.listen(env.port, '0.0.0.0', () => {
+  console.log(`API + WebSocket on http://0.0.0.0:${env.port}`);
 });
